@@ -6,6 +6,18 @@ const logger = createScopedLogger("batch-scrape");
 
 type Stream = components["schemas"]["Stream"];
 type Container = components["schemas"]["Container"];
+type SessionActionBody = {
+    action: "select_files" | "update_attributes" | "abort" | "complete";
+    files?: Container;
+    file_data?: any;
+};
+
+async function postSessionAction(session_id: string, body: SessionActionBody) {
+    return (providers.riven as any).POST("/api/v1/scrape/session/{session_id}", {
+        params: { path: { session_id } },
+        body
+    });
+}
 
 interface ParsedTitleData {
     filename?: string;
@@ -113,18 +125,7 @@ export async function processBatchItem({
         });
     }
 
-    // 3. Select Files (Auto-select based on logic)
-    const container: any = {}; // Container is TorrentContainer? alias via types.gen.ts
-    // TorrentContainer interface has files?: { [key: string]: TorrentFile } ...
-    // BUT here container is being used as body for manualSelect.
-    // manualSelect body expecting? riven.ts: /api/v1/scrape/select_files/{session_id}.
-    // Op: manual_select. Input: DebridContainer (likely).
-    // Let's check manual_select body type in riven.ts later. Assuming it matches Container alias.
-    // Actually previous code: container[file_id] = { ... }.
-    // If Container alias is TorrentContainer (from riven.ts), it has structure.
-    // But manualSelect likely takes a simpler structure or matches.
-
-    // Using any for container build to avoid strict type mess if alias is partial
+    // 3. Select Files (auto-select based on logic)
     const containerBody: any = {};
 
     fileMappings.forEach((m) => {
@@ -135,9 +136,9 @@ export async function processBatchItem({
         };
     });
 
-    await providers.riven.POST("/api/v1/scrape/select_files/{session_id}", {
-        params: { path: { session_id: sId } },
-        body: containerBody
+    await postSessionAction(sId, {
+        action: "select_files",
+        files: containerBody
     });
 
     // 4. Update Attributes
@@ -192,13 +193,11 @@ export async function processBatchItem({
         }
     }
 
-    await providers.riven.POST("/api/v1/scrape/update_attributes/{session_id}", {
-        params: { path: { session_id: sId } },
-        body: updateBody
+    await postSessionAction(sId, {
+        action: "update_attributes",
+        file_data: updateBody
     });
 
     // 5. Complete Session
-    await providers.riven.POST("/api/v1/scrape/complete_session/{session_id}", {
-        params: { path: { session_id: sId } }
-    });
+    await postSessionAction(sId, { action: "complete" });
 }

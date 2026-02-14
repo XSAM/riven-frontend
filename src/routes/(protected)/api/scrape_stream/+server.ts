@@ -8,7 +8,7 @@ const logger = createScopedLogger("scrape-stream");
 
 /**
  * SSE proxy endpoint for streaming scrape results.
- * Forwards the request to the backend's scrape_stream endpoint and
+ * Forwards the request to the backend's scrape endpoint in stream mode and
  * streams the response back to the client.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
@@ -26,7 +26,9 @@ export const GET: RequestHandler = async ({ locals, url }) => {
         const abortController = new AbortController();
 
         try {
-            const targetUrl = `${backendUrl}/api/v1/scrape/scrape_stream${url.search}`;
+            const params = new URLSearchParams(url.searchParams);
+            params.set("stream", "true");
+            const targetUrl = `${backendUrl}/api/v1/scrape?${params.toString()}`;
             const response = await fetch(targetUrl, {
                 method: "GET",
                 headers: {

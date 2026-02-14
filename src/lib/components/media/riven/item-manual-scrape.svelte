@@ -12,7 +12,6 @@
     import * as Alert from "$lib/components/ui/alert/index.js";
     import * as Card from "$lib/components/ui/card/index.js";
     import * as Accordion from "$lib/components/ui/accordion/index.js";
-    import { Switch } from "$lib/components/ui/switch/index.js";
     import * as Tabs from "$lib/components/ui/tabs/index.js";
     import { Button } from "$lib/components/ui/button/index.js";
     import { Badge } from "$lib/components/ui/badge/index.js";
@@ -146,7 +145,6 @@
     let activeTab = $state("all");
     let batchProgress = $state<{ current: number; total: number; message: string } | null>(null);
     let searchQuery = $state("");
-    let disableFilesizeCheck = $state(false);
 
     let customTitle = $state("");
     let customImdbId = $state("");
@@ -285,11 +283,6 @@
             else if (externalId) {
                 if (mediaType === "movie") queryParams.tmdb_id = externalId;
                 if (mediaType === "tv") queryParams.tvdb_id = externalId;
-            }
-
-            if (disableFilesizeCheck) {
-                // @ts-ignore
-                queryParams.disable_filesize_check = true;
             }
 
             const { data, error: err } = await providers.riven.POST(
@@ -449,7 +442,7 @@
         }
     }
 
-    type AutoScrapeRequest = components["schemas"]["AutoScrapeRequest"];
+    type AutoScrapeRequest = components["schemas"]["AutoScrapeRequestPayload"];
 
     async function handleAutoScrape() {
         // itemId is optional now, as we can fallback to externalId
@@ -523,20 +516,18 @@
                 };
 
                 // Fire and forget - don't await this
-                providers.riven
-                    .POST("/api/v1/scrape/seasons", {
+                (providers.riven as any)
+                    .POST("/api/v1/scrape/auto", {
                         body: seasonBody
                     })
-                    .then(({ data: sData, error: sErr }) => {
+                    .then(({ error: sErr }: { error?: { message?: string; detail?: string } }) => {
                         if (sErr) {
                             const errorMsg =
-                                (sErr as any).message ||
-                                (sErr as any).detail ||
-                                "Failed to start auto scrape";
+                                sErr.message || sErr.detail || "Failed to start auto scrape";
                             toast.error(errorMsg);
                         }
                     })
-                    .catch((e) => {
+                    .catch((e: unknown) => {
                         logger.error("Auto scrape failed", e);
                         toast.error("An error occurred starting the scrape");
                     });
@@ -577,7 +568,7 @@
     }
 
     // Helper to start a session with a given magnet link
-    async function startScrapeSession(magnet: string, forceDisableFilesizeCheck: boolean = false) {
+    async function startScrapeSession(magnet: string) {
         loading = true;
         error = null;
 
@@ -586,11 +577,6 @@
                 media_type: mediaType,
                 magnet: magnet
             };
-
-            if (forceDisableFilesizeCheck || disableFilesizeCheck) {
-                // @ts-ignore
-                queryParams.disable_filesize_check = true;
-            }
 
             if (itemId) {
                 queryParams.item_id = parseInt(itemId as string);
@@ -644,9 +630,7 @@
         // If magnet link is provided, use it directly (non-streaming)
         if (magnetLink) {
             isManualMagnet = true;
-            // When manually entering a magnet, we assume the user knows what they are doing,
-            // so we disable the filesize check to allow scraping of any file size.
-            await startScrapeSession(magnetLink, true);
+            await startScrapeSession(magnetLink);
             return;
         }
 
@@ -874,6 +858,19 @@
         }
     }
 
+    type SessionActionBody = {
+        action: "select_files" | "update_attributes" | "abort" | "complete";
+        files?: Container;
+        file_data?: UpdateBody;
+    };
+
+    async function postSessionAction(session_id: string, body: SessionActionBody) {
+        return (providers.riven as any).POST("/api/v1/scrape/session/{session_id}", {
+            params: { path: { session_id } },
+            body
+        });
+    }
+
     async function handleComplete() {
         if (!sessionId) return;
 
@@ -893,13 +890,10 @@
                 };
             });
 
-            const { data: selectData, error: selectErr } = await providers.riven.POST(
-                "/api/v1/scrape/select_files/{session_id}",
-                {
-                    params: { path: { session_id: sessionId } },
-                    body: container
-                }
-            );
+            const { data: selectData, error: selectErr } = await postSessionAction(sessionId, {
+                action: "select_files",
+                files: container
+            });
 
             if (!selectData) {
                 const errorMsg = (selectErr as any)?.message || "Failed to select files";
@@ -943,13 +937,10 @@
                 });
             }
 
-            const { data: updateData, error: updateErr } = await providers.riven.POST(
-                "/api/v1/scrape/update_attributes/{session_id}",
-                {
-                    params: { path: { session_id: sessionId } },
-                    body: updateBody
-                }
-            );
+            const { data: updateData, error: updateErr } = await postSessionAction(sessionId, {
+                action: "update_attributes",
+                file_data: updateBody
+            });
 
             if (!updateData) {
                 logger.error(updateErr);
@@ -960,12 +951,9 @@
             }
 
             // Step 3: Complete session
-            const { data: completeData, error: completeErr } = await providers.riven.POST(
-                "/api/v1/scrape/complete_session/{session_id}",
-                {
-                    params: { path: { session_id: sessionId } }
-                }
-            );
+            const { data: completeData, error: completeErr } = await postSessionAction(sessionId, {
+                action: "complete"
+            });
 
             if (completeData) {
                 toast.success("Manual scrape completed successfully!");
@@ -1018,10 +1006,9 @@
                         };
                     });
 
-                    await providers.riven.POST("/api/v1/scrape/select_files/{session_id}", {
-                        params: { path: { session_id: session.sessionId } },
-                        // @ts-ignore
-                        body: container
+                    await postSessionAction(session.sessionId, {
+                        action: "select_files",
+                        files: container
                     });
 
                     // Step 2: Update attributes
@@ -1056,15 +1043,13 @@
                         });
                     }
 
-                    await providers.riven.POST("/api/v1/scrape/update_attributes/{session_id}", {
-                        params: { path: { session_id: session.sessionId } },
-                        body: updateBody
+                    await postSessionAction(session.sessionId, {
+                        action: "update_attributes",
+                        file_data: updateBody
                     });
 
                     // Step 3: Complete
-                    await providers.riven.POST("/api/v1/scrape/complete_session/{session_id}", {
-                        params: { path: { session_id: session.sessionId } }
-                    });
+                    await postSessionAction(session.sessionId, { action: "complete" });
 
                     // Update session status
                     session.status = "completed";
@@ -1126,22 +1111,14 @@
             untrack(() => {
                 // Cleanup: abort session if not completed
                 if (sessionId) {
-                    providers.riven
-                        .POST("/api/v1/scrape/abort_session/{session_id}", {
-                            params: { path: { session_id: sessionId } }
-                        })
-                        .catch(() => {
-                            // Silently ignore cleanup errors
-                        });
+                    postSessionAction(sessionId, { action: "abort" }).catch(() => {
+                        // Silently ignore cleanup errors
+                    });
                 }
                 // Cleanup batch sessions
                 batchSessions.forEach((s) => {
                     if (s.status === "pending") {
-                        providers.riven
-                            .POST("/api/v1/scrape/abort_session/{session_id}", {
-                                params: { path: { session_id: s.sessionId } }
-                            })
-                            .catch(() => {});
+                        postSessionAction(s.sessionId, { action: "abort" }).catch(() => {});
                     }
                 });
                 resetFlow();
@@ -1298,14 +1275,6 @@
                                     Back
                                 </Button>
 
-                                <div class="flex items-center space-x-2">
-                                    <Label for="disable-filesize-check" class="text-xs"
-                                        >Disable filesize check</Label>
-                                    <Switch
-                                        id="disable-filesize-check"
-                                        bind:checked={disableFilesizeCheck} />
-                                </div>
-
                                 {#if selectedMagnets.size > 0}
                                     <Button
                                         size="sm"
@@ -1442,16 +1411,7 @@
 
                     <div
                         class="flex max-h-[60vh] flex-col gap-2 overflow-y-auto rounded-md border p-2 pr-2">
-                        <div class="flex items-center justify-between">
-                            <Label>Quality Constraints</Label>
-                            <div class="flex items-center space-x-2">
-                                <Label for="disable-filesize-check-auto" class="text-xs"
-                                    >Disable filesize check</Label>
-                                <Switch
-                                    id="disable-filesize-check-auto"
-                                    bind:checked={disableFilesizeCheck} />
-                            </div>
-                        </div>
+                        <Label>Quality Constraints</Label>
                         <p class="text-muted-foreground mb-2 text-xs">
                             Configure constraints for the auto scrape process.
                         </p>

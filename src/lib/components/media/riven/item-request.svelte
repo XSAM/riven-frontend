@@ -16,7 +16,7 @@
         mediaType: string; //"movie" | "tv"
         seasons?: SeasonInfo[];
         buttonLabel?: string;
-        externalId?: string; // TVDB or TMDB ID for /api/v1/scrape/seasons
+        externalId?: string; // TVDB or TMDB ID for /api/v1/scrape/auto
         variant?:
             | "ghost"
             | "default"
@@ -66,8 +66,7 @@
                     season_numbers: Array.from(selectedSeasons)
                 };
 
-                // HACK: Casting providers.riven to any because the endpoint might not be in the generated client
-                const response = await (providers.riven as any).POST("/api/v1/scrape/seasons", {
+                const response = await (providers.riven as any).POST("/api/v1/scrape/auto", {
                     body: body
                 });
 

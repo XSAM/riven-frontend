@@ -1,6 +1,6 @@
 import type { components } from "$lib/providers/riven";
 
-export type AutoScrapeRequest = components["schemas"]["AutoScrapeRequest"];
+export type AutoScrapeRequest = components["schemas"]["AutoScrapeRequestPayload"];
 
 export interface ScrapeSeasonRequest extends AutoScrapeRequest {
     season_numbers: number[];
