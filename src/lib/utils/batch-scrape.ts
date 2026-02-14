@@ -63,7 +63,7 @@ export async function processBatchItem({
         magnet: `magnet:?xt=urn:btih:${magnet}`
     };
     if (itemId) queryParams.item_id = parseInt(itemId);
-    else if (externalId) {
+    if (externalId) {
         if (mediaType === "movie") queryParams.tmdb_id = externalId;
         if (mediaType === "tv") queryParams.tvdb_id = externalId;
     }

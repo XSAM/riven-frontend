@@ -278,9 +278,10 @@
                 magnet: `magnet:?xt=urn:btih:${magnet}`
             };
 
-            if (itemId)
+            if (itemId) {
                 queryParams.item_id = parseInt(itemId as string); // Ensure int
-            else if (externalId) {
+            }
+            if (externalId) {
                 if (mediaType === "movie") queryParams.tmdb_id = externalId;
                 if (mediaType === "tv") queryParams.tvdb_id = externalId;
             }
@@ -580,16 +581,18 @@
 
             if (itemId) {
                 queryParams.item_id = parseInt(itemId as string);
-            } else {
-                if (!externalId) {
-                    throw new Error("No item ID or external ID available");
-                }
+            }
+            if (externalId) {
                 if (mediaType === "movie") {
                     queryParams.tmdb_id = externalId;
                 }
                 if (mediaType === "tv") {
                     queryParams.tvdb_id = externalId;
                 }
+            }
+
+            if (!queryParams.item_id && !queryParams.tmdb_id && !queryParams.tvdb_id) {
+                throw new Error("No item ID or external ID available");
             }
 
             const { data, error: err } = await providers.riven.POST(
