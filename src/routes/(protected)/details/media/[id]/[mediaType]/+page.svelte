@@ -81,6 +81,12 @@
 
     let selectedSeason: string | undefined = $state("1");
     let rivenId = $derived(data.riven?.id ?? data.mediaDetails?.details?.id);
+    let selectedRivenSeason = $derived(
+        data.riven?.seasons?.find((season) => season.season_number === Number(selectedSeason))
+    );
+    let selectedSeasonEpisodeIds = $derived(
+        selectedRivenSeason?.episodes?.map((episode) => episode.id) ?? []
+    );
 </script>
 
 <svelte:head>
@@ -524,7 +530,20 @@
 
             {#if data.mediaDetails?.type === "tv" && data.mediaDetails?.details.episodes}
                 <section>
-                    <h2 class="mt-8 mb-4 text-lg font-bold drop-shadow-md">Episodes</h2>
+                    <div class="mt-8 mb-4 flex flex-wrap items-center justify-between gap-3">
+                        <h2 class="text-lg font-bold drop-shadow-md">Episodes</h2>
+
+                        {#if selectedRivenSeason && selectedSeasonEpisodeIds.length > 0}
+                            <ItemReset
+                                class="bg-white/10"
+                                variant="outline"
+                                title={`Season ${selectedSeason}`}
+                                ids={selectedSeasonEpisodeIds}
+                                buttonLabel="Reset Season"
+                                successMessage={`Season ${selectedSeason} reset successfully!`}
+                                description={`This will reset all ${selectedSeasonEpisodeIds.length} Riven episode${selectedSeasonEpisodeIds.length === 1 ? "" : "s"} in Season ${selectedSeason}, remove their current files, and blacklist their active streams. You can then use Manual Scrape to select a replacement magnet.`} />
+                        {/if}
+                    </div>
 
                     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                         {#each data.mediaDetails?.details.episodes.filter((ep) => ep.seasonNumber?.toString() === selectedSeason) as episode (episode.id)}
@@ -554,27 +573,22 @@
                                         {episode.aired} • {episode.runtime} min
                                     </p>
 
-                                    {#if data.riven && data.riven.seasons}
-                                        {@const rivenSeason = data.riven.seasons.find(
-                                            (s) => s.season_number === Number(selectedSeason)
+                                    {#if selectedRivenSeason?.episodes}
+                                        {@const rivenEpisode = selectedRivenSeason.episodes.find(
+                                            (e) => e.episode_number === episode.number
                                         )}
-                                        {#if rivenSeason && rivenSeason.episodes}
-                                            {@const rivenEpisode = rivenSeason.episodes.find(
-                                                (e) => e.episode_number === episode.number
-                                            )}
-                                            {#if rivenEpisode && rivenEpisode.state}
-                                                <Badge
-                                                    class={cn(
-                                                        "mb-2 text-xs",
-                                                        rivenEpisode.state === "Completed"
-                                                            ? "bg-green-600"
-                                                            : rivenEpisode.state === "Unknown"
-                                                              ? "bg-red-600"
-                                                              : "bg-yellow-600"
-                                                    )}>
-                                                    {rivenEpisode.state}
-                                                </Badge>
-                                            {/if}
+                                        {#if rivenEpisode?.state}
+                                            <Badge
+                                                class={cn(
+                                                    "mb-2 text-xs",
+                                                    rivenEpisode.state === "Completed"
+                                                        ? "bg-green-600"
+                                                        : rivenEpisode.state === "Unknown"
+                                                          ? "bg-red-600"
+                                                          : "bg-yellow-600"
+                                                )}>
+                                                {rivenEpisode.state}
+                                            </Badge>
                                         {/if}
                                     {/if}
 

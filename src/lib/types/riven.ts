@@ -37,6 +37,7 @@ export interface RivenMediaItem {
         season_number: number;
         state: string;
         episodes?: Array<{
+            id: string;
             episode_number: number;
             state: string;
         }>;
